@@ -3,15 +3,21 @@
 import type React from "react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Download } from "lucide-react";
 import axios from "@/lib/axiosConfig";
 
 export default function VideoUploader() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [framesWithOnePerson, setFramesWithOnePerson] = useState<number[] | null>(null);
-  const [splicedVideoUrl, setSplicedVideoUrl] = useState<string | null>(null);
+  const [segments, setSegments] = useState<Array<{
+    video_url: string;
+    overlay_url: string;
+    duration: number;
+    start_frame: number;
+    end_frame: number;
+  }> | null>(null);
+  const [poseDataUrl, setPoseDataUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -40,31 +46,25 @@ export default function VideoUploader() {
 
   const handleUpload = async () => {
     if (!file) return;
-
+  
     try {
       setUploading(true);
-
-      // Upload the file
+  
       const formData = new FormData();
       formData.append("file", file);
-
+  
       const result = await uploadVideo(formData);
-      const framesWithOnePerson = result.frames_with_one_person;
-      const splicedVideoUrl = `http://127.0.0.1:5000${result.spliced_video_url}`;
-      console.log("SPLICE URL", splicedVideoUrl)
-
-      setFramesWithOnePerson(framesWithOnePerson);
-      setSplicedVideoUrl(splicedVideoUrl);
-
-      // Reset after successful upload
-      setTimeout(() => {
-        setUploading(false);
-      }, 1500);
+      
+      // Update these lines
+      setSegments(result.segments);
+      setPoseDataUrl(result.pose_data_url);
+  
+      setUploading(false);
     } catch (err) {
       setError("Failed to upload video. Please try again.");
       setUploading(false);
     }
-  };
+  };  
 
   const clearFile = () => {
     setFile(null);
@@ -164,36 +164,71 @@ export default function VideoUploader() {
 
       {error && <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">{error}</div>}
 
-      {framesWithOnePerson && (
-        <>
-          <div className="mt-4">
-            <h3 className="text-lg font-medium">Frames with Exactly One Person:</h3>
-            <ul className="list-disc list-inside">
-              {framesWithOnePerson.map((frame) => (
-                <li key={frame}>Frame {frame}</li>
+      {segments && (
+        <div className="space-y-6">
+          <div className="border-t pt-4">
+            <h2 className="text-xl font-semibold mb-4">Processed Segments</h2>
+            <div className="space-y-4">
+              {segments.map((segment, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  <div className="flex gap-4">
+                    <div className="flex-1">
+                      <h3 className="font-medium mb-2">
+                        Segment {index + 1} ({formatDuration(segment.duration)})
+                      </h3>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => window.open(
+                            `http://127.0.0.1:5000${segment.video_url}`,
+                            '_blank'
+                          )}
+                          variant="outline"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Original Video
+                        </Button>
+                        <Button
+                          onClick={() => window.open(
+                            `http://127.0.0.1:5000${segment.overlay_url}`,
+                            '_blank'
+                          )}
+                          variant="outline"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Pose Overlay Video
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
 
-          {/* Update your video preview usage */}
-          <video className="w-10 h-10 object-cover rounded">
-            <source src={previewUrl || ''} type={file?.type} />
-          </video>
-
-          {/* Modify the download button */}
-          <Button 
-            onClick={() => {
-              if (splicedVideoUrl) {
-                window.open(new URL(splicedVideoUrl).href, '_blank');
-              }
-            }}
-            variant="link"
-            className="text-blue-600 underline"
-          >
-            Download Spliced Video
-          </Button>
-        </>
+          {poseDataUrl && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium mb-2">Pose Data</h3>
+              <Button
+                onClick={() => window.open(
+                  `http://127.0.0.1:5000${poseDataUrl}`,
+                  '_blank'
+                )}
+                variant="outline"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download Pose Data (JSON)
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
+}
+
+// Helper function to format duration
+function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
 }
