@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 import cv2
 from transformers import AutoProcessor, RTDetrForObjectDetection, VitPoseForPoseEstimation
 from PIL import Image
@@ -9,10 +9,8 @@ from werkzeug.utils import secure_filename
 from flask_cors import CORS
 import json
 import time
-from lib.models import get_model
-from lib.core.config import parse_args
-from lib.data_utils.kp_utils import convert_kps
-from lib.utils.renderer import Renderer
+import subprocess
+import uuid
 
 app = Flask(__name__)
 CORS(app)
@@ -271,6 +269,71 @@ def create_segment_writers(seg_idx, fps, width, height):
     overlay_writer = cv2.VideoWriter(overlay_path, fourcc, fps, (width, height))
     
     return seg_path, overlay_path
+
+@app.route('/process_wham', methods=['POST'])
+def process_wham():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if file and allowed_file(file.filename):
+        # Generate unique ID for this processing job
+        job_id = str(uuid.uuid4())
+        output_dir = os.path.join(app.config['OUTPUT_FOLDER'], f"wham_output_{job_id}")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(output_dir, filename)
+        file.save(input_path)
+        
+        try:
+            # Run WHAM processing
+            cmd = [
+                "python", "demo.py",
+                "--video", input_path,
+                "--output_pth", output_dir,
+                "--visualize",
+                "--save_pkl"
+            ]
+            
+            # Add GPU acceleration if available
+            if torch.cuda.is_available():
+                cmd.append("--device")
+                cmd.append("cuda")
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            # Return results
+            return jsonify({
+                'visualization': f"/download/wham_output_{job_id}/visualization.mp4",
+                'pose_data': f"/download/wham_output_{job_id}/wham_output.pkl",
+                'log': result.stdout
+            }), 200
+            
+        except subprocess.CalledProcessError as e:
+            return jsonify({
+                'error': 'WHAM processing failed',
+                'details': e.stderr
+            }), 500
+            
+        finally:
+            # Cleanup input file
+            os.remove(input_path)
+    
+    return jsonify({'error': 'Invalid file type'}), 400
+
+@app.route('/download/<path:filename>')
+def download_wham(filename):
+    return send_from_directory(app.config['OUTPUT_FOLDER'], filename)
 
 if __name__ == '__main__':
     app.run(debug=True)

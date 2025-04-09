@@ -20,6 +20,13 @@ export default function VideoUploader() {
   const [poseDataUrl, setPoseDataUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [whamLoading, setWhamLoading] = useState<{ [key: number]: boolean }>({});
+  const [whamResults, setWhamResults] = useState<{ 
+    [key: number]: { 
+      pose?: string; 
+      video?: string 
+    } 
+  }>({});
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -92,6 +99,38 @@ export default function VideoUploader() {
       }
     }
   }
+
+  const handleWhamAnalysis = async (segmentIndex: number, videoUrl: string) => {
+    try {
+      setWhamLoading(prev => ({ ...prev, [segmentIndex]: true }));
+      
+      // Fetch video segment
+      const response = await fetch(videoUrl);
+      const videoBlob = await response.blob();
+      const videoFile = new File([videoBlob], `segment_${segmentIndex}.mp4`, 
+        { type: 'video/mp4' });
+  
+      // Prepare form data
+      const formData = new FormData();
+      formData.append('file', videoFile);
+  
+      // Call WHAM endpoint
+      const result = await axios.post('/process_wham', formData);
+      
+      // Update results
+      setWhamResults(prev => ({
+        ...prev,
+        [segmentIndex]: {
+          pose: `http://127.0.0.1:5000${result.data.pose_data_url}`,
+          video: `http://127.0.0.1:5000${result.data.visualization}`
+        }
+      }));
+    } catch (err) {
+      setError("WHAM analysis failed. Please try again.");
+    } finally {
+      setWhamLoading(prev => ({ ...prev, [segmentIndex]: false }));
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -197,11 +236,45 @@ export default function VideoUploader() {
                           <Download className="mr-2 h-4 w-4" />
                           Pose Overlay Video
                         </Button>
-                      </div>
+                        <Button
+                          onClick={() => handleWhamAnalysis(index, segment.video_url)}
+                          variant="outline"
+                          disabled={whamLoading[index]}
+                        >
+                          {whamLoading[index] ? (
+                            <span className="animate-pulse">Processing...</span>
+                          ) : (
+                            <>
+                              <span className="mr-2">⚡</span>
+                              WHAM Analysis
+                            </>
+                          )}
+                        </Button>
+                        {whamResults[index] && (
+                        <div className="mt-2 space-y-2">
+                          <Button
+                            onClick={() => window.open(whamResults[index].video!, '_blank')}
+                            variant="link"
+                            className="text-green-600"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download WHAM Visualization
+                          </Button>
+                          <Button
+                            onClick={() => window.open(whamResults[index].pose!, '_blank')}
+                            variant="link"
+                            className="text-purple-600"
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Download WHAM Pose Data
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
+            ))}
             </div>
           </div>
 

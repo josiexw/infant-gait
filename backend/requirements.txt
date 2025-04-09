@@ -30,7 +30,6 @@ marshmallow==3.26.1
 matplotlib==3.10.1
 mpmath==1.3.0
 networkx==3.4.2
-numpy==1.26.4
 open3d-python==0.3.0.0
 packaging==24.2
 pandas==2.2.3
@@ -73,3 +72,24 @@ urllib3==2.3.0
 uvicorn==0.34.0
 Werkzeug==3.1.3
 wsproto==1.2.0
+chumpy @ git+https://github.com/mattloper/chumpy
+numpy==1.22.3
+yacs
+joblib
+scikit-image
+opencv-python
+imageio[ffmpeg]
+matplotlib
+tensorboard
+smplx
+progress
+einops
+mmcv-full==1.5.0
+timm==0.4.9
+munkres
+xtcocotools>=1.8
+loguru
+setuptools==59.5.0
+tqdm
+ultralytics
+gdown==4.6.0
