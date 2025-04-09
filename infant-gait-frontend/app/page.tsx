@@ -1,7 +1,4 @@
-import { Suspense } from "react"
 import VideoUploader from "@/components/video-uploader"
-import ProcessingStatus from "@/components/processing-status"
-import ResultsDisplay from "@/components/results-display"
 
 export default function Home() {
   return (
@@ -13,14 +10,6 @@ export default function Home() {
           <h2 className="text-2xl font-semibold mb-4">Upload Video</h2>
           <VideoUploader />
         </section>
-
-        <Suspense fallback={<div className="h-20 flex items-center justify-center">Loading status...</div>}>
-          <ProcessingStatus />
-        </Suspense>
-
-        <Suspense fallback={<div className="h-60 flex items-center justify-center">Loading results...</div>}>
-          <ResultsDisplay />
-        </Suspense>
       </div>
     </main>
   )

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import cv2
 from transformers import AutoProcessor, RTDetrForObjectDetection, VitPoseForPoseEstimation
 from PIL import Image
@@ -13,11 +13,12 @@ CORS(app)
 
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'outputs'
 ALLOWED_EXTENSIONS = {'mp4'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Ensure upload folder exists
+app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -37,14 +38,31 @@ def upload_video():
         file.save(filepath)
         
         # Process the video
-        frames_with_one_person = process_video(filepath)
+        frames_with_one_person, spliced_video_path = process_video(filepath)
 
         # Delete video
         os.remove(filepath)
         
-        return jsonify({'frames_with_one_person': frames_with_one_person}), 200
+        return jsonify({
+            'frames_with_one_person': frames_with_one_person,
+            'spliced_video_url': f"/download/{os.path.basename(spliced_video_path)}",
+        }), 200
     
     return jsonify({'error': 'Invalid file type'}), 400
+
+@app.route('/download/<filename>', methods=['GET'])
+def download_file(filename):
+    filepath = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+    
+    if os.path.exists(filepath):
+        return send_file(
+            filepath,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='video/mp4'
+        )
+    else:
+        return jsonify({'error': 'File not found'}), 404
 
 def process_video(video_path):
     # Set up device (use GPU if available)
@@ -60,6 +78,14 @@ def process_video(video_path):
     cap = cv2.VideoCapture(video_path)
     frames_with_one_person = []
     frame_count = 0
+
+    # Prepare output video writer
+    output_video_path = os.path.join(app.config['OUTPUT_FOLDER'], 'spliced_video.mp4')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4 codec
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -99,9 +125,11 @@ def process_video(video_path):
             # If a valid pose is detected for the single person, add the frame number
             if len(pose_results) == 1:
                 frames_with_one_person.append(frame_count)
+                out.write(frame)
 
     cap.release()
-    return frames_with_one_person
+    out.release()
+    return frames_with_one_person, output_video_path
 
 if __name__ == '__main__':
     app.run(debug=True)

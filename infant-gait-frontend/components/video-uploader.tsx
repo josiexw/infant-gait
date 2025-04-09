@@ -1,93 +1,87 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { Upload, X } from "lucide-react"
-import { uploadVideo } from "@/lib/actions"
-import axios from "axios";
+import type React from "react";
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Upload, X } from "lucide-react";
+import axios from "@/lib/axiosConfig";
 
 export default function VideoUploader() {
-  const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [error, setError] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [framesWithOnePerson, setFramesWithOnePerson] = useState<number[] | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [splicedVideoUrl, setSplicedVideoUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
+    const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       if (selectedFile.type.startsWith("video/")) {
-        setFile(selectedFile)
-        setError(null)
+        setPreviewUrl(URL.createObjectURL(selectedFile));
+        setFile(selectedFile);
+        setError(null);
       } else {
-        setError("Please select a valid video file")
-        setFile(null)
+        setError("Please select a valid video file");
+        setFile(null);
       }
     }
-  }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+  
 
   const handleUpload = async () => {
     if (!file) return;
-  
+
     try {
       setUploading(true);
-      setUploadProgress(0);
-  
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => {
-          const newProgress = prev + Math.random() * 10;
-          return newProgress >= 100 ? 99 : newProgress;
-        });
-      }, 500);
-  
+
       // Upload the file
       const formData = new FormData();
       formData.append("file", file);
-  
-      const framesWithOnePerson = await uploadVideo(formData);
+
+      const result = await uploadVideo(formData);
+      const framesWithOnePerson = result.frames_with_one_person;
+      const splicedVideoUrl = `http://127.0.0.1:5000${result.spliced_video_url}`;
+      console.log("SPLICE URL", splicedVideoUrl)
+
       setFramesWithOnePerson(framesWithOnePerson);
-  
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-  
-      // Display results (e.g., log them or show them in a UI component)
-      console.log("Frames with exactly one person:", framesWithOnePerson);
-      alert(`Frames with exactly one person: ${framesWithOnePerson.join(", ")}`);
-  
+      setSplicedVideoUrl(splicedVideoUrl);
+
       // Reset after successful upload
       setTimeout(() => {
-        setFile(null);
         setUploading(false);
-        setUploadProgress(0);
       }, 1500);
     } catch (err) {
       setError("Failed to upload video. Please try again.");
       setUploading(false);
     }
   };
-  
-  const clearFile = () => {
-    setFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
 
-  async function uploadVideo(formData: FormData): Promise<number[]> {
+  const clearFile = () => {
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  async function uploadVideo(formData: FormData): Promise<any> {
     try {
-      const response = await axios.post("http://127.0.0.1:5000/upload", formData, {
+      const response = await axios.post("/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total!);
-          setUploadProgress(percentCompleted);
         },
       });
-      return response.data.frames_with_one_person; // Expecting an array of frame numbers from the backend
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         console.error("Error uploading video:", error.response?.data || error.message);
@@ -98,7 +92,6 @@ export default function VideoUploader() {
       }
     }
   }
-  
 
   return (
     <div className="space-y-4">
@@ -156,8 +149,7 @@ export default function VideoUploader() {
 
             {uploading && (
               <div className="space-y-2">
-                <Progress value={uploadProgress} className="h-2" />
-                <p className="text-sm text-muted-foreground">Uploading... {Math.round(uploadProgress)}%</p>
+                <p className="text-sm text-muted-foreground">Processing...</p>
               </div>
             )}
 
@@ -173,16 +165,35 @@ export default function VideoUploader() {
       {error && <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm">{error}</div>}
 
       {framesWithOnePerson && (
-        <div className="mt-4">
-          <h3 className="text-lg font-medium">Frames with Exactly One Person:</h3>
-          <ul className="list-disc list-inside">
-            {framesWithOnePerson.map((frame) => (
-              <li key={frame}>Frame {frame}</li>
-            ))}
-          </ul>
-        </div>
+        <>
+          <div className="mt-4">
+            <h3 className="text-lg font-medium">Frames with Exactly One Person:</h3>
+            <ul className="list-disc list-inside">
+              {framesWithOnePerson.map((frame) => (
+                <li key={frame}>Frame {frame}</li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Update your video preview usage */}
+          <video className="w-10 h-10 object-cover rounded">
+            <source src={previewUrl || ''} type={file?.type} />
+          </video>
+
+          {/* Modify the download button */}
+          <Button 
+            onClick={() => {
+              if (splicedVideoUrl) {
+                window.open(new URL(splicedVideoUrl).href, '_blank');
+              }
+            }}
+            variant="link"
+            className="text-blue-600 underline"
+          >
+            Download Spliced Video
+          </Button>
+        </>
       )}
     </div>
-  )
+  );
 }
-
